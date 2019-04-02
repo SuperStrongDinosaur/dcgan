@@ -237,7 +237,10 @@ class DCGAN(object):
 
             a = 0
             b = 0
-            queue = list()
+            queue1 = list()
+            queue2 = list()
+            queue3 = list()
+            queue4 = list()
             step = 50
             n = batch0[0].shape[0]
             m = batch0[0].shape[1]
@@ -247,118 +250,118 @@ class DCGAN(object):
                     mxX = min(x + 64, batch0[0].shape[0])
                     mxY = min(y + 64, batch0[0].shape[1])
                     if len(q) == 0 or q[-1] != (mxX, mxY):
-                        queue.append((mxX, mxY))
+                        q.append((mxX, mxY))
                     return mxX, mxY
 
                 for k in xrange(a, n, step):
-                    func(k, b, queue)
+                    func(k, b, queue1)
                 for k in xrange(b + step, m, step):
-                    func(n, k, queue)
+                    func(n, k, queue2)
                 for k in xrange(n - step, a, -step):
-                    func(k, n, queue)
+                    func(k, n, queue3)
                 for k in xrange(m - step, b + step, -step):
-                    func(a, k, queue)
+                    func(a, k, queue4)
 
                 a += step
                 b += step
                 n -= step
                 m -= step
 
-            queue.reverse()
-            for cnt in queue:
-                maxX, maxY = cnt
+            queue1.reverse()
+            queue2.reverse()
+            queue3.reverse()
+            queue4.reverse()
 
-                batch = [(batch0[0][maxX - 64: maxX, maxY - 64:maxY, :])]
-                isNeededToReconstuct = False
+            for q in [queue1, queue2, queue3, queue4]:
+                for cnt in q:
+                    maxX, maxY = cnt
 
-                mask = np.ones(self.image_shape)
-                for i in range(0, self.image_size):
-                    for j in range(0, self.image_size):
-                        def almost_equal(x, y, epsilon=0.7):
-                            return abs(x - y) <= epsilon
-                        if almost_equal(batch[0][i][j][0], 1.0) and almost_equal(batch[0][i][j][1], -1.0) and almost_equal(batch[0][i][j][2], 1.0):
-                            mask[i, j, :] = 0.0
-                            isNeededToReconstuct = True
+                    batch = [(batch0[0][maxX - 64: maxX, maxY - 64:maxY, :])]
+                    isNeededToReconstuct = False
 
-                if not isNeededToReconstuct:
-                    continue
+                    mask = np.ones(self.image_shape)
+                    for i in range(0, self.image_size):
+                        for j in range(0, self.image_size):
+                            def almost_equal(x, y, epsilon=0.7):
+                                return abs(x - y) <= epsilon
+                            if almost_equal(batch[0][i][j][0], 1.0) and almost_equal(batch[0][i][j][1], -1.0) and almost_equal(batch[0][i][j][2], 1.0):
+                                mask[i, j, :] = 0.0
+                                isNeededToReconstuct = True
 
-                batch_images = np.array(batch).astype(np.float32)
-                if batchSz < self.batch_size:
-                    print(batchSz)
-                    padSz = ((0, int(self.batch_size - batchSz)), (0, 0), (0, 0), (0, 0))
-                    batch_images = np.pad(batch_images, padSz, 'constant')
-                    batch_images = batch_images.astype(np.float32)
+                    if not isNeededToReconstuct:
+                        continue
 
-                zhats = np.random.uniform(-1, 1, size=(self.batch_size, self.z_dim))
-                m = 0
-                v = 0
+                    batch_images = np.array(batch).astype(np.float32)
+                    if batchSz < self.batch_size:
+                        print(batchSz)
+                        padSz = ((0, int(self.batch_size - batchSz)), (0, 0), (0, 0), (0, 0))
+                        batch_images = np.pad(batch_images, padSz, 'constant')
+                        batch_images = batch_images.astype(np.float32)
 
-                nRows = np.ceil(batchSz / 8)
-                nCols = min(8, batchSz)
-                save_images(batch_images[:batchSz, :, :, :], [nRows, nCols], os.path.join(config.outDir, 'before.png'))
-                masked_images = np.multiply(batch_images, mask)
-                # masked_images = batch_images
-                save_images(masked_images[:batchSz, :, :, :], [nRows, nCols], os.path.join(config.outDir, 'masked.png'))
+                    zhats = np.random.uniform(-1, 1, size=(self.batch_size, self.z_dim))
+                    m = 0
+                    v = 0
 
-                if lowres_mask.any():
-                    lowres_images = np.reshape(batch_images,
-                                               [self.batch_size, self.lowres_size, self.lowres, self.lowres_size,
-                                                self.lowres, self.c_dim]).mean(4).mean(2)
-                    lowres_images = np.multiply(lowres_images, lowres_mask)
-                    lowres_images = np.repeat(np.repeat(lowres_images, self.lowres, 1), self.lowres, 2)
-                    save_images(lowres_images[:batchSz, :, :, :], [nRows, nCols], os.path.join(config.outDir, 'lowres.png'))
+                    nRows = np.ceil(batchSz / 8)
+                    nCols = min(8, batchSz)
+                    save_images(batch_images[:batchSz, :, :, :], [nRows, nCols], os.path.join(config.outDir, 'before.png'))
+                    masked_images = np.multiply(batch_images, mask)
+                    # masked_images = batch_images
+                    save_images(masked_images[:batchSz, :, :, :], [nRows, nCols], os.path.join(config.outDir, 'masked.png'))
 
-                for img in range(batchSz):
-                    with open(os.path.join(config.outDir, 'logs/hats_{:02d}.log'.format(img)), 'a') as f:
-                        f.write('iter loss ' + ' '.join(['z{}'.format(zi) for zi in range(self.z_dim)]) + '\n')
-
-                for i in xrange(config.nIter):
-                    fd = {
-                        self.z: zhats,
-                        self.mask: mask,
-                        self.lowres_mask: lowres_mask,
-                        self.images: batch_images,
-                        self.is_training: False
-                    }
-                    run = [self.complete_loss, self.grad_complete_loss, self.G, self.lowres_G]
-                    loss, g, G_imgs, lowres_G_imgs = self.sess.run(run, feed_dict=fd)
+                    if lowres_mask.any():
+                        lowres_images = np.reshape(batch_images,
+                                                   [self.batch_size, self.lowres_size, self.lowres, self.lowres_size,
+                                                    self.lowres, self.c_dim]).mean(4).mean(2)
+                        lowres_images = np.multiply(lowres_images, lowres_mask)
+                        lowres_images = np.repeat(np.repeat(lowres_images, self.lowres, 1), self.lowres, 2)
+                        save_images(lowres_images[:batchSz, :, :, :], [nRows, nCols], os.path.join(config.outDir, 'lowres.png'))
 
                     for img in range(batchSz):
-                        with open(os.path.join(config.outDir, 'logs/hats_{:02d}.log'.format(img)), 'ab') as f:
-                            f.write('{} {} '.format(i, loss[img]).encode())
-                            np.savetxt(f, zhats[img:img + 1])
+                        with open(os.path.join(config.outDir, 'logs/hats_{:02d}.log'.format(img)), 'a') as f:
+                            f.write('iter loss ' + ' '.join(['z{}'.format(zi) for zi in range(self.z_dim)]) + '\n')
 
-                    if i % config.outInterval == 0:
-                        print(i, np.mean(loss[0:batchSz]))
-                        imgName = os.path.join(config.outDir, 'hats_imgs/{:04d}.png'.format(i))
-                        nRows = np.ceil(batchSz / 8)
-                        nCols = min(8, batchSz)
-                        save_images(G_imgs[:batchSz, :, :, :], [nRows, nCols], imgName)
-                        if lowres_mask.any():
-                            imgName = imgName[:-4] + '.lowres.png'
-                            save_images(np.repeat(np.repeat(lowres_G_imgs[:batchSz, :, :, :], self.lowres, 1), self.lowres, 2), [nRows, nCols], imgName)
+                    loss = 0
+                    for i in xrange(config.nIter):
+                        fd = {
+                            self.z: zhats,
+                            self.mask: mask,
+                            self.lowres_mask: lowres_mask,
+                            self.images: batch_images,
+                            self.is_training: False
+                        }
+                        run = [self.complete_loss, self.grad_complete_loss, self.G, self.lowres_G]
+                        loss, g, G_imgs, lowres_G_imgs = self.sess.run(run, feed_dict=fd)
 
-                        inv_masked_hat_images = np.multiply(G_imgs, 1.0 - mask)
-                        completed = masked_images + inv_masked_hat_images
+                        for img in range(batchSz):
+                            with open(os.path.join(config.outDir, 'logs/hats_{:02d}.log'.format(img)), 'ab') as f:
+                                f.write('{} {} '.format(i, loss[img]).encode())
+                                np.savetxt(f, zhats[img:img + 1])
 
-                        for i0 in range(maxX - 64, maxX):
-                            for j0 in range(maxY - 64, maxY):
-                                batch0[0][i0][j0] = completed[0][i0 - maxX + 64][j0 - maxY + 64]
+                        if i % config.outInterval == 0:
+                            print(i, np.mean(loss[0:batchSz]))
+                            inv_masked_hat_images = np.multiply(G_imgs, 1.0 - mask)
+                            completed = masked_images + inv_masked_hat_images
 
-                        imgName = os.path.join(config.outDir, 'completed/{:04d}.png'.format(i))
+                            for i0 in range(maxX - 64, maxX):
+                                for j0 in range(maxY - 64, maxY):
+                                    batch0[0][i0][j0] = completed[0][i0 - maxX + 64][j0 - maxY + 64]
 
-                        save_images(completed[:batchSz, :, :, :], [nRows, nCols], imgName)
+                            imgName = os.path.join(config.outDir, 'completed/{:04d}.png'.format(i))
+                            save_images(completed[:batchSz, :, :, :], [nRows, nCols], imgName)
 
-                    # Optimize single completion with Adam
-                    m_prev = np.copy(m)
-                    v_prev = np.copy(v)
-                    m = config.beta1 * m_prev + (1 - config.beta1) * g[0]
-                    v = config.beta2 * v_prev + (1 - config.beta2) * np.multiply(g[0], g[0])
-                    m_hat = m / (1 - config.beta1 ** (i + 1))
-                    v_hat = v / (1 - config.beta2 ** (i + 1))
-                    zhats += - np.true_divide(config.lr * m_hat, (np.sqrt(v_hat) + config.eps))
-                    zhats = np.clip(zhats, -1, 1)
+                        # Optimize single completion with Adam
+                        m_prev = np.copy(m)
+                        v_prev = np.copy(v)
+                        m = config.beta1 * m_prev + (1 - config.beta1) * g[0]
+                        v = config.beta2 * v_prev + (1 - config.beta2) * np.multiply(g[0], g[0])
+                        m_hat = m / (1 - config.beta1 ** (i + 1))
+                        v_hat = v / (1 - config.beta2 ** (i + 1))
+                        zhats += - np.true_divide(config.lr * m_hat, (np.sqrt(v_hat) + config.eps))
+                        zhats = np.clip(zhats, -1, 1)
+
+                    if loss > 700:
+                        break
 
             imgName = os.path.join(config.outDir, 'completed/finale.png')
             save_images(np.array(batch0).astype(np.float32), [1, 1], imgName)
